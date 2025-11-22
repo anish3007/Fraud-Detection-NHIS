@@ -114,12 +114,17 @@ def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
             return None
 
         normalized['rowid'] = raw.get('rowid') or raw.get('id')
-        normalized['patient_id'] = pick('patient_id', 'patient', 'pat_id')
+        # Prefer exact header matches commonly found in datasets
+        # Map 'Patient ID' -> patient_id (case-insensitive) and 'Amount Billed' -> billed_amount
+        normalized['patient_id'] = pick('patient_id', 'Patient ID', 'patient', 'pat_id')
+        # procedure_code is optional for this dataset; do not force a placeholder
         normalized['procedure_code'] = pick('procedure_code', 'proc_code', 'procedure')
-        normalized['billed_amount'] = pick('billed_amount', 'amount_billed', 'amount', 'amt') or 0
-        normalized['diagnosis'] = pick('diagnosis', 'diag', 'diagnosis_code')
+        normalized['billed_amount'] = pick('billed_amount', 'Amount Billed', 'amount_billed', 'amount', 'amt') or 0
+        normalized['diagnosis'] = pick('diagnosis', 'DIAGNOSIS', 'diag', 'diagnosis_code')
         normalized['age'] = pick('age', 'patient_age', 'age_years')
-        normalized['gender'] = pick('gender', 'sex')
+        normalized['gender'] = pick('gender', 'GENDER', 'sex')
+        # capture FRAUD_TYPE column if present
+        normalized['fraud_type'] = pick('fraud_type', 'FRAUD_TYPE')
 
         # include original keys as fallback
         for k, v in raw.items():

@@ -62,9 +62,10 @@
 
           el.innerHTML = `<div class="d-flex justify-content-between align-items-start">
             <div>
-              <div><strong>Claim</strong> #${c.rowid} — Proc: ${c.procedure_code || 'N/A'} — Patient: ${c.patient_id || 'N/A'}</div>
-              <div class="small text-muted">Diagnosis: ${c.diagnosis || '—'}</div>
-              <div class="small text-muted">Age: ${age} — Gender: ${gender} — Amount: ${c.billed_amount || '—'}</div>
+          <div><strong>Claim</strong> #${c.rowid} — Patient: ${c.patient_id || c['Patient ID'] || 'N/A'}</div>
+            <div class="small text-muted">Diagnosis: ${c.diagnosis || '—'}</div>
+            <div class="small text-muted">Age: ${age} — Gender: ${gender} — Amount: ${c.billed_amount || c['Amount Billed'] || '—'}</div>
+            <div class="small text-muted">Fraud Type: ${c.fraud_type || c['FRAUD_TYPE'] || '—'}</div>
             </div>
             <div><span class="badge ${badgeClass} score-badge">Score: ${c.fraud_score}</span></div>
           </div>`;
@@ -91,16 +92,35 @@
       // modal logic
       function showClaimModal(c){
         const modalEl = document.getElementById('claimModal');
-        modalEl.querySelector('.modal-title').textContent = `Claim #${c.rowid}`;
-        modalEl.querySelector('#m-proc').textContent = c.procedure_code || 'N/A';
-        modalEl.querySelector('#m-patient').textContent = c.patient_id || 'N/A';
-        modalEl.querySelector('#m-age').textContent = c.age || c.patient_age || '—';
-        modalEl.querySelector('#m-gender').textContent = c.gender || c.sex || '—';
-        modalEl.querySelector('#m-diagnosis').textContent = c.diagnosis || '—';
-        modalEl.querySelector('#m-amount').textContent = c.billed_amount || '—';
-        modalEl.querySelector('#m-score').textContent = c.fraud_score;
-        // raw JSON
-        modalEl.querySelector('#m-raw').textContent = JSON.stringify(c, null, 2);
+        if(!modalEl) return; // nothing to do
+        // safe selector helper
+        const maybe = (sel) => modalEl.querySelector(sel) || null;
+
+        const titleEl = maybe('.modal-title');
+        if(titleEl) titleEl.textContent = `Claim #${c.rowid}`;
+
+        const elProc = maybe('#m-proc'); if(elProc) elProc.textContent = 'N/A';
+        const elPatient = maybe('#m-patient'); if(elPatient) elPatient.textContent = c.patient_id || c['Patient ID'] || 'N/A';
+        const elAge = maybe('#m-age'); if(elAge) elAge.textContent = c.age || c.patient_age || '—';
+        const elGender = maybe('#m-gender'); if(elGender) elGender.textContent = c.gender || c.sex || '—';
+        const elDiag = maybe('#m-diagnosis'); if(elDiag) elDiag.textContent = c.diagnosis || '—';
+        const elAmt = maybe('#m-amount'); if(elAmt) elAmt.textContent = c.billed_amount || c['Amount Billed'] || '—';
+
+        // show fraud type in modal (append if needed)
+        let mFraud = maybe('#m-fraud');
+        const dl = maybe('dl.row');
+        if(!mFraud && dl){
+          const dt = document.createElement('dt'); dt.className='col-sm-3'; dt.textContent='Fraud Type';
+          const dd = document.createElement('dd'); dd.className='col-sm-9'; dd.id='m-fraud';
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+          mFraud = maybe('#m-fraud');
+        }
+        if(mFraud) mFraud.textContent = c.fraud_type || c['FRAUD_TYPE'] || '—';
+
+        const elScore = maybe('#m-score'); if(elScore) elScore.textContent = c.fraud_score;
+        const elRaw = maybe('#m-raw'); if(elRaw) elRaw.textContent = JSON.stringify(c, null, 2);
+
         const bsModal = new bootstrap.Modal(modalEl);
         bsModal.show();
       }
@@ -116,12 +136,12 @@
           </div>
           <div class="modal-body">
             <dl class="row">
-              <dt class="col-sm-3">Procedure</dt><dd class="col-sm-9" id="m-proc"></dd>
               <dt class="col-sm-3">Patient</dt><dd class="col-sm-9" id="m-patient"></dd>
               <dt class="col-sm-3">Age</dt><dd class="col-sm-9" id="m-age"></dd>
               <dt class="col-sm-3">Gender</dt><dd class="col-sm-9" id="m-gender"></dd>
               <dt class="col-sm-3">Diagnosis</dt><dd class="col-sm-9" id="m-diagnosis"></dd>
               <dt class="col-sm-3">Amount</dt><dd class="col-sm-9" id="m-amount"></dd>
+              <!-- Fraud Type will be appended dynamically when modal opens -->
               <dt class="col-sm-3">Fraud Score</dt><dd class="col-sm-9" id="m-score"></dd>
             </dl>
             <h6>Raw claim JSON</h6>
