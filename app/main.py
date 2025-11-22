@@ -76,6 +76,13 @@ def dashboard():
     return template.render(total=total, avg_charge=avg_charge, billed=billed)
 
 
+@app.get("/claims", response_class=HTMLResponse)
+def claims_page():
+    """Render the claims review page."""
+    template = env.get_template("claims.html")
+    return template.render()
+
+
 @app.get("/api/claims")
 def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
     conn = get_db_conn()
