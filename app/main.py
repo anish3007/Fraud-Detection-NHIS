@@ -96,19 +96,52 @@ def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
     params += [limit, offset]
     cur.execute(sql, params)
     cols = [d[0] for d in cur.description]
-    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    raw_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    # normalize keys to canonical names used by the UI
+
+    def normalize_row(raw: Dict) -> Dict:
+        normalized = {}
+        # lower-key map
+        lk = {k.lower(): k for k in raw.keys()}
+
+        def pick(*candidates):
+            for c in candidates:
+                if c in raw and raw[c] is not None:
+                    return raw[c]
+                if c.lower() in lk and raw.get(lk[c.lower()]) is not None:
+                    return raw.get(lk[c.lower()])
+            return None
+
+        normalized['rowid'] = raw.get('rowid') or raw.get('id')
+        normalized['patient_id'] = pick('patient_id', 'patient', 'pat_id')
+        normalized['procedure_code'] = pick('procedure_code', 'proc_code', 'procedure')
+        normalized['billed_amount'] = pick('billed_amount', 'amount_billed', 'amount', 'amt') or 0
+        normalized['diagnosis'] = pick('diagnosis', 'diag', 'diagnosis_code')
+        normalized['age'] = pick('age', 'patient_age', 'age_years')
+        normalized['gender'] = pick('gender', 'sex')
+
+        # include original keys as fallback
+        for k, v in raw.items():
+            if k not in normalized:
+                normalized[k] = v
+        return normalized
+
+    rows = [normalize_row(r) for r in raw_rows]
     conn.close()
     # compute simple avg per procedure (naively)
     avg_by_proc: Dict[str, float] = {}
     try:
-        conn = sqlite3.connect(str(DB))
-        df = [r for r in rows]
-        # quick avg calc
+        # compute averages from normalized rows
+        df = rows
         sums = {}
         counts = {}
         for r in df:
-            proc = r.get("procedure_code")
-            amt = r.get("billed_amount") or 0
+            proc = r.get('procedure_code')
+            try:
+                amt = float(r.get('billed_amount') or 0)
+            except Exception:
+                amt = 0
             if proc is None:
                 continue
             sums[proc] = sums.get(proc, 0) + amt

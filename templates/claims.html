@@ -11,7 +11,22 @@
       <div class="mb-3">
         <input id="q" class="form-control" placeholder="Search by diagnosis, patient id...">
       </div>
-      <div id="claimsList" class="list-group"></div>
+
+      <div class="mb-3 d-flex gap-2 align-items-center">
+        <div>
+          <button id="filterAll" class="btn btn-outline-primary btn-sm">All</button>
+          <button id="filterHigh" class="btn btn-outline-danger btn-sm">High</button>
+          <button id="filterMed" class="btn btn-outline-warning btn-sm">Medium</button>
+          <button id="filterLow" class="btn btn-outline-success btn-sm">Low</button>
+        </div>
+        <div class="ms-3">
+          <small class="text-muted">Legend:</small>
+          <span class="badge bg-danger ms-2">High &gt; 75</span>
+          <span class="badge bg-warning text-dark ms-2">Medium 25-75</span>
+          <span class="badge bg-success ms-2">Low &lt; 25</span>
+        </div>
+      </div>
+  <div id="claimsList" class="list-group"></div>
       <div class="my-3">
         <button id="loadMore" class="btn btn-primary">Load more</button>
       </div>
@@ -20,6 +35,13 @@
     <script>
       let offset = 0;
       const limit = 25;
+      let currentFilter = 'all'; // all, high, med, low
+
+      function scoreCategory(score){
+        if(score > 75) return 'high';
+        if(score >= 25) return 'med';
+        return 'low';
+      }
       async function loadClaims(reset=false){
         const q = document.getElementById('q').value || '';
         if(reset){ offset = 0; document.getElementById('claimsList').innerHTML = ''; }
@@ -34,14 +56,22 @@
           else if(c.fraud_score >= 25) badgeClass = 'bg-warning text-dark';
           const age = c.age || c.patient_age || '—';
           const gender = c.gender || c.sex || '—';
+          const category = scoreCategory(c.fraud_score);
+          // apply filter
+          if(currentFilter !== 'all' && currentFilter !== category) return;
+
           el.innerHTML = `<div class="d-flex justify-content-between align-items-start">
             <div>
               <div><strong>Claim</strong> #${c.rowid} — Proc: ${c.procedure_code || 'N/A'} — Patient: ${c.patient_id || 'N/A'}</div>
               <div class="small text-muted">Diagnosis: ${c.diagnosis || '—'}</div>
               <div class="small text-muted">Age: ${age} — Gender: ${gender} — Amount: ${c.billed_amount || '—'}</div>
             </div>
-            <div><span class="badge ${badgeClass}">Score: ${c.fraud_score}</span></div>
+            <div><span class="badge ${badgeClass} score-badge">Score: ${c.fraud_score}</span></div>
           </div>`;
+          // store claim JSON for modal
+          el.dataset.claim = JSON.stringify(c);
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => showClaimModal(c));
           document.getElementById('claimsList').appendChild(el);
         });
         offset += data.items.length;
@@ -51,6 +81,59 @@
       document.getElementById('q').addEventListener('keydown', (e) => { if(e.key === 'Enter') loadClaims(true); });
       // initial load
       loadClaims();
+
+      // filter buttons
+      document.getElementById('filterAll').addEventListener('click', () => { currentFilter = 'all'; loadClaims(true); });
+      document.getElementById('filterHigh').addEventListener('click', () => { currentFilter = 'high'; loadClaims(true); });
+      document.getElementById('filterMed').addEventListener('click', () => { currentFilter = 'med'; loadClaims(true); });
+      document.getElementById('filterLow').addEventListener('click', () => { currentFilter = 'low'; loadClaims(true); });
+
+      // modal logic
+      function showClaimModal(c){
+        const modalEl = document.getElementById('claimModal');
+        modalEl.querySelector('.modal-title').textContent = `Claim #${c.rowid}`;
+        modalEl.querySelector('#m-proc').textContent = c.procedure_code || 'N/A';
+        modalEl.querySelector('#m-patient').textContent = c.patient_id || 'N/A';
+        modalEl.querySelector('#m-age').textContent = c.age || c.patient_age || '—';
+        modalEl.querySelector('#m-gender').textContent = c.gender || c.sex || '—';
+        modalEl.querySelector('#m-diagnosis').textContent = c.diagnosis || '—';
+        modalEl.querySelector('#m-amount').textContent = c.billed_amount || '—';
+        modalEl.querySelector('#m-score').textContent = c.fraud_score;
+        // raw JSON
+        modalEl.querySelector('#m-raw').textContent = JSON.stringify(c, null, 2);
+        const bsModal = new bootstrap.Modal(modalEl);
+        bsModal.show();
+      }
     </script>
+
+    <!-- Claim detail modal -->
+    <div class="modal fade" id="claimModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Claim detail</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <dl class="row">
+              <dt class="col-sm-3">Procedure</dt><dd class="col-sm-9" id="m-proc"></dd>
+              <dt class="col-sm-3">Patient</dt><dd class="col-sm-9" id="m-patient"></dd>
+              <dt class="col-sm-3">Age</dt><dd class="col-sm-9" id="m-age"></dd>
+              <dt class="col-sm-3">Gender</dt><dd class="col-sm-9" id="m-gender"></dd>
+              <dt class="col-sm-3">Diagnosis</dt><dd class="col-sm-9" id="m-diagnosis"></dd>
+              <dt class="col-sm-3">Amount</dt><dd class="col-sm-9" id="m-amount"></dd>
+              <dt class="col-sm-3">Fraud Score</dt><dd class="col-sm-9" id="m-score"></dd>
+            </dl>
+            <h6>Raw claim JSON</h6>
+            <pre id="m-raw" class="small bg-light p-2" style="max-height:300px;overflow:auto"></pre>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   </body>
 </html>
