@@ -23,18 +23,35 @@
       </div>
 
       <h3 class="mt-4">Fraud Score Distribution (by billed amount heuristic)</h3>
+
+      <div class="row my-3">
+        <div class="col-md-4">
+          <div class="card p-3 text-center">
+            <div class="h6 text-success">Low</div>
+            <div class="h3">{{ score_counts[0] }}</div>
+            <div class="text-muted">{{ ((score_counts[0] / (total if total else 1)) * 100) | round(1) }}%</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 text-center">
+            <div class="h6 text-warning">Medium</div>
+            <div class="h3">{{ score_counts[1] }}</div>
+            <div class="text-muted">{{ ((score_counts[1] / (total if total else 1)) * 100) | round(1) }}%</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card p-3 text-center">
+            <div class="h6 text-danger">High</div>
+            <div class="h3">{{ score_counts[2] }}</div>
+            <div class="text-muted">{{ ((score_counts[2] / (total if total else 1)) * 100) | round(1) }}%</div>
+          </div>
+        </div>
+      </div>
+
       <canvas id="scoreChart" width="400" height="120"></canvas>
 
       <script>
-        const billed = {{ billed | tojson }};
-        // naive bucketing by billed value percentiles for demo
-        const counts = [0,0,0];
-        billed.forEach(v => {
-          if (!v) return;
-          if (v < 0.33 * Math.max(...billed)) counts[0]++;
-          else if (v < 0.66 * Math.max(...billed)) counts[1]++;
-          else counts[2]++;
-        });
+  const counts = {{ score_counts | tojson }};
         new Chart(document.getElementById('scoreChart'), {
           type: 'bar',
           data: {

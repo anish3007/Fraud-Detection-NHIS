@@ -79,6 +79,16 @@
         if(data.items.length < limit){ document.getElementById('loadMore').disabled = true; }
       }
       document.getElementById('loadMore').addEventListener('click', () => loadClaims());
+      // debounce helper
+      function debounce(fn, wait){
+        let t = null;
+        return function(...args){
+          clearTimeout(t);
+          t = setTimeout(()=> fn.apply(this, args), wait);
+        };
+      }
+      const debouncedSearch = debounce(()=> loadClaims(true), 350);
+      document.getElementById('q').addEventListener('input', debouncedSearch);
       document.getElementById('q').addEventListener('keydown', (e) => { if(e.key === 'Enter') loadClaims(true); });
       // initial load
       loadClaims();

@@ -17,6 +17,13 @@ env = Environment(
 app = FastAPI()
 
 
+@app.get("/health")
+def health_check():
+    """Simple health endpoint for platform healthchecks."""
+    return {"status": "ok"}
+
+
+
 def get_db_conn():
     if not DB.exists():
         raise RuntimeError("Database not found. Run scripts/load_data.py first.")
@@ -70,10 +77,88 @@ def dashboard():
     else:
         avg_charge = 0
         billed = []
+    # compute fraud score distribution for dashboard visualization
+    try:
+        cur.execute("SELECT rowid, * FROM claims")
+        cols = [d[0] for d in cur.description]
+        raw_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+        def normalize_row(raw: Dict) -> Dict:
+            normalized = {}
+            lk = {k.lower(): k for k in raw.keys()}
+
+            def pick(*candidates):
+                for c in candidates:
+                    if c in raw and raw[c] is not None:
+                        return raw[c]
+                    if c.lower() in lk and raw.get(lk[c.lower()]) is not None:
+                        return raw.get(lk[c.lower()])
+                return None
+
+            normalized['rowid'] = raw.get('rowid') or raw.get('id')
+            normalized['procedure_code'] = pick('procedure_code', 'proc_code', 'procedure')
+            normalized['billed_amount'] = pick('billed_amount', 'Amount Billed', 'amount_billed', 'amount', 'amt') or 0
+            normalized['diagnosis'] = pick('diagnosis', 'DIAGNOSIS', 'diag', 'diagnosis_code')
+            # include original keys as fallback
+            for k, v in raw.items():
+                if k not in normalized:
+                    normalized[k] = v
+            return normalized
+
+        rows = [normalize_row(r) for r in raw_rows]
+        # compute avg by diagnosis (bucket by diagnosis) as requested
+        sums = {}
+        counts = {}
+        for r in rows:
+            diag = r.get('diagnosis')
+            try:
+                amt = float(r.get('billed_amount') or 0)
+            except Exception:
+                amt = 0
+            if diag is None:
+                continue
+            sums[diag] = sums.get(diag, 0) + amt
+            counts[diag] = counts.get(diag, 0) + 1
+        avg_by_diag = {k: (sums[k] / counts[k]) for k in sums} if sums else {}
+        # global avg fallback
+        billed_vals = [float(r.get('billed_amount') or 0) for r in rows if (r.get('billed_amount') or 0)]
+        global_avg = (sum(billed_vals) / len(billed_vals)) if billed_vals else 1.0
+
+        # compute fraud score using formula: billed_amount / avg_in_diag
+        score_counts = [0, 0, 0]
+        for r in rows:
+            try:
+                amt = float(r.get('billed_amount') or 0)
+            except Exception:
+                amt = 0
+            diag = r.get('diagnosis')
+            avg = avg_by_diag.get(diag, global_avg)
+            try:
+                avg_f = float(avg) if avg is not None else 0
+            except Exception:
+                avg_f = 0
+            ratio = (amt / avg_f) if avg_f and avg_f > 0 else 0.0
+            r['fraud_ratio'] = ratio
+            # map to 0-100 for display (simple linear scaling then clamp)
+            raw_score = int(round(100.0 * ratio))
+            if raw_score < 0:
+                raw_score = 0
+            if raw_score > 100:
+                raw_score = 100
+            r['fraud_score'] = raw_score
+            if raw_score <= 25:
+                score_counts[0] += 1
+            elif raw_score <= 75:
+                score_counts[1] += 1
+            else:
+                score_counts[2] += 1
+    except Exception:
+        score_counts = [0, 0, 0]
+
     conn.close()
 
     template = env.get_template("dashboard.html")
-    return template.render(total=total, avg_charge=avg_charge, billed=billed)
+    return template.render(total=total, avg_charge=avg_charge, billed=billed, score_counts=score_counts)
 
 
 @app.get("/claims", response_class=HTMLResponse)
@@ -82,7 +167,6 @@ def claims_page():
     template = env.get_template("claims.html")
     return template.render()
 
-
 @app.get("/api/claims")
 def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
     conn = get_db_conn()
@@ -90,8 +174,18 @@ def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
     sql = "SELECT rowid, * FROM claims"
     params: List = []
     if q:
-        sql += " WHERE diagnosis LIKE ? OR patient_id LIKE ?"
-        params += [f"%{q}%", f"%{q}%"]
+        # build a WHERE clause that searches across all columns (case-insensitive)
+        cur.execute("PRAGMA table_info(claims)")
+        table_cols = [r[1] for r in cur.fetchall()]
+        where_parts = []
+        for col in table_cols:
+            # quote column name safely
+            safe_col = '"' + col.replace('"', '""') + '"'
+            # CAST to text and compare lower-case values to handle numeric/text fields
+            where_parts.append(f"LOWER(COALESCE(CAST({safe_col} AS TEXT), '')) LIKE LOWER(?)")
+            params.append(f"%{q}%")
+        if where_parts:
+            sql += " WHERE " + " OR ".join(where_parts)
     sql += " LIMIT ? OFFSET ?"
     params += [limit, offset]
     cur.execute(sql, params)
@@ -153,9 +247,62 @@ def api_claims(q: str = Query(None), limit: int = 50, offset: int = 0):
             counts[proc] = counts.get(proc, 0) + 1
         for k in sums:
             avg_by_proc[k] = sums[k] / counts[k]
+        # compute and add a sensible '__global__' avg from billed_amounts to avoid extreme fallbacks
+        billed_vals = []
+        for r in rows:
+            try:
+                v = float(r.get('billed_amount') or 0)
+            except Exception:
+                v = 0
+            if v > 0:
+                billed_vals.append(v)
+        if billed_vals:
+            avg_by_proc['__global__'] = sum(billed_vals) / len(billed_vals)
+        else:
+            avg_by_proc['__global__'] = 1.0
     except Exception:
         avg_by_proc = {}
 
-    for r in rows:
-        r["fraud_score"] = score_claim(r, avg_by_proc)
+    # compute percentile-based fraud_score for API response (same approach as dashboard)
+    try:
+        # compute fraud_score by DIAGNOSIS bucket for API as well
+        sums = {}
+        counts = {}
+        for r in rows:
+            diag = r.get('diagnosis')
+            try:
+                amt = float(r.get('billed_amount') or 0)
+            except Exception:
+                amt = 0
+            if diag is None:
+                continue
+            sums[diag] = sums.get(diag, 0) + amt
+            counts[diag] = counts.get(diag, 0) + 1
+        avg_by_diag = {k: (sums[k] / counts[k]) for k in sums} if sums else {}
+        billed_vals = [float(r.get('billed_amount') or 0) for r in rows if (r.get('billed_amount') or 0)]
+        global_avg = (sum(billed_vals) / len(billed_vals)) if billed_vals else 1.0
+        for r in rows:
+            try:
+                amt = float(r.get('billed_amount') or 0)
+            except Exception:
+                amt = 0
+            diag = r.get('diagnosis')
+            avg = avg_by_diag.get(diag, global_avg)
+            try:
+                avg_f = float(avg) if avg is not None else 0
+            except Exception:
+                avg_f = 0
+            ratio = (amt / avg_f) if avg_f and avg_f > 0 else 0.0
+            r['fraud_ratio'] = ratio
+            raw_score = int(round(100.0 * ratio))
+            if raw_score < 0:
+                raw_score = 0
+            if raw_score > 100:
+                raw_score = 100
+            r['fraud_score'] = raw_score
+    except Exception:
+        # fallback to original scoring if something goes wrong
+        for r in rows:
+            r["fraud_score"] = score_claim(r, avg_by_proc)
+
     return {"items": rows, "count": len(rows)}
