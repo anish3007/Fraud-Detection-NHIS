@@ -1,4 +1,5 @@
 # Fraud-Detection-NHIS
+![Python tests](https://github.com/anish3007/Fraud-Detection-NHIS/actions/workflows/python-tests.yml/badge.svg)
 NHIS Claims Auditor Dashboard (MVP)
 
 Quick start
