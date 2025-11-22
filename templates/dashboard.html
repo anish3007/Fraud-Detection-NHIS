@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>NHIS Claims Auditor Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="p-4">
+    <div class="container">
+      <h1>NHIS Claims Auditor Dashboard</h1>
+      <div class="row my-3">
+        <div class="col">
+          <div class="card p-3">Total Claims: <strong>{{ total }}</strong></div>
+        </div>
+        <div class="col">
+          <div class="card p-3">Avg Charge: <strong>{{ avg_charge }}</strong></div>
+        </div>
+      </div>
+
+      <h3 class="mt-4">Fraud Score Distribution (by billed amount heuristic)</h3>
+      <canvas id="scoreChart" width="400" height="120"></canvas>
+
+      <script>
+        const billed = {{ billed | tojson }};
+        // naive bucketing by billed value percentiles for demo
+        const counts = [0,0,0];
+        billed.forEach(v => {
+          if (!v) return;
+          if (v < 0.33 * Math.max(...billed)) counts[0]++;
+          else if (v < 0.66 * Math.max(...billed)) counts[1]++;
+          else counts[2]++;
+        });
+        new Chart(document.getElementById('scoreChart'), {
+          type: 'bar',
+          data: {
+            labels: ['Low','Medium','High'],
+            datasets: [{ label: 'Claims', data: counts, backgroundColor: ['#4caf50','#ff9800','#f44336'] }]
+          }
+        });
+      </script>
+
+    </div>
+  </body>
+</html>
