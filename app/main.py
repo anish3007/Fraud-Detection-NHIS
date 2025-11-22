@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.heuristic import score_claim
 
