@@ -28,11 +28,20 @@
         data.items.forEach(c => {
           const el = document.createElement('div');
           el.className = 'list-group-item';
-          el.innerHTML = `<div class="d-flex justify-content-between">
-            <div><strong>Claim</strong> #${c.rowid} — Proc: ${c.procedure_code || 'N/A'} — Patient: ${c.patient_id || 'N/A'}</div>
-            <div><span class="badge bg-danger">Score: ${c.fraud_score}</span></div>
-          </div>
-          <div class="small text-muted">Diagnosis: ${c.diagnosis || ''} — Amount: ${c.billed_amount || ''}</div>`;
+          // choose badge color
+          let badgeClass = 'bg-success';
+          if(c.fraud_score > 75) badgeClass = 'bg-danger';
+          else if(c.fraud_score >= 25) badgeClass = 'bg-warning text-dark';
+          const age = c.age || c.patient_age || '—';
+          const gender = c.gender || c.sex || '—';
+          el.innerHTML = `<div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div><strong>Claim</strong> #${c.rowid} — Proc: ${c.procedure_code || 'N/A'} — Patient: ${c.patient_id || 'N/A'}</div>
+              <div class="small text-muted">Diagnosis: ${c.diagnosis || '—'}</div>
+              <div class="small text-muted">Age: ${age} — Gender: ${gender} — Amount: ${c.billed_amount || '—'}</div>
+            </div>
+            <div><span class="badge ${badgeClass}">Score: ${c.fraud_score}</span></div>
+          </div>`;
           document.getElementById('claimsList').appendChild(el);
         });
         offset += data.items.length;
