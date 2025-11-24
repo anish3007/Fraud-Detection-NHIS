@@ -31,10 +31,16 @@ FrequencyScore = 20 if Proc_freq ≥ 10
 Fraud Score = min(100, ProcedureScore + ProviderScore + FrequencyScore)
 ```
 
-2) Prompt: "Generate a Python function that implements the heuristic: inputs are a claim row dict, and output is an integer score between 0 and 100. Include docstring and unit-test example."
+2) Prompt: "Generate a step-by-step plan to follow to build the NHIS Fraud Auditor Dashboard MVP within the assignment constraints (8 hours), plus concrete implementation tips, code snippets, deployment commands, testing checklist"
 Output:
 ```
-<paste LLM output here>
+Recommended approach (fastest, robust)
+
+Stack (Rapid + production-feasible): Python + FastAPI (backend API) + SQLite (local) or Redis for TTL + Pandas for ingestion + React (create-react-app) for frontend with Chart.js or Recharts.
+
+Alternative fastest (single repo, minimal dev): Streamlit app (UI + logic in one place) — great if you need to finish quickly and deploy to Streamlit Cloud. But if you need REST endpoints / and /claims, use FastAPI (small code) + a tiny React UI.
+
+Deploy to: Render / Railway for backend, Vercel for frontend (or single Render for both). Dockerize if you prefer.
 ```
 
 3) Prompt: "Recommend a minimal FastAPI project structure for an MVP that serves a dashboard and a paginated claims API; include endpoints and data flow."
